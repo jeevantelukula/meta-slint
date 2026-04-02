@@ -46,9 +46,10 @@ CARGO_DISABLE_BITBAKE_VENDORING = "1"
 # cargo.bbclass handles compilation directly using -p slint to build only the Slint UI framework with Skia+KMS features
 CARGO_BUILD_FLAGS = "-v --target ${RUST_HOST_SYS} ${BUILD_MODE} --manifest-path=${CARGO_MANIFEST_PATH} -p slint --features 'slint/backend-linuxkms slint/renderer-skia'"
 
-# Increase network timeouts: Skia source + dependencies can take several minutes
-export CARGO_HTTP_TIMEOUT = "600"
-export CARGO_NET_RETRY = "5"
+# Increase network timeouts for slow networks: downloading 344+ crates can take many minutes
+export CARGO_HTTP_TIMEOUT = "3600"
+export CARGO_NET_RETRY = "10"
+export CARGO_HTTP_MULTIPLIER = "2"
 
 do_configure[network] = "1"
 do_compile[network] = "1"
