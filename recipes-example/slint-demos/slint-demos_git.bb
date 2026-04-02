@@ -60,8 +60,13 @@ BBCLASSEXTEND = "native"
 do_configure:append() {
     SKIA_PREP_DIR="${UNPACKDIR}/skia-source"
 
-    if [ ! -f "${SKIA_PREP_DIR}/.skia-prepared" ]; then
-        bbnote "Preparing Skia source..."
+    if [ ! -f "${SKIA_PREP_DIR}/.skia-deps-synced" ]; then
+        bbnote "Preparing Skia source with dependencies..."
+
+        # Configure git with extended timeouts for large Skia dependency clones
+        git config --global http.lowSpeedLimit 0
+        git config --global http.lowSpeedTime 600
+        git config --global fetch.timeout 600
 
         # Extract Skia source from bitbake-downloaded tarball
         rm -rf ${SKIA_PREP_DIR}
@@ -84,8 +89,31 @@ sys.exit(0)
 FETCHGN
         chmod +x ${SKIA_PREP_DIR}/bin/fetch-gn
 
-        touch ${SKIA_PREP_DIR}/.skia-prepared
-        bbnote "Skia source prepared at ${SKIA_PREP_DIR}"
+        # Run git-sync-deps to download third-party dependencies with retry logic
+        # Network failures are transient; retrying usually succeeds
+        cd ${UNPACKDIR}
+
+        for attempt in 1 2 3 4 5; do
+            bbnote "Running git-sync-deps (attempt $attempt/5)..."
+
+            GIT_SYNC_DEPS_PATH="${SKIA_PREP_DIR}/DEPS" \
+            GIT_SYNC_DEPS_SKIP_EMSDK=1 \
+            python3 ${SKIA_PREP_DIR}/tools/git-sync-deps && break
+
+            if [ $attempt -lt 5 ]; then
+                bbnote "git-sync-deps failed, retrying in 10s..."
+                sleep 10
+            fi
+        done
+
+        if [ $? -ne 0 ]; then
+            bbfatal "git-sync-deps failed after 5 attempts"
+        fi
+
+        cd -
+
+        touch ${SKIA_PREP_DIR}/.skia-deps-synced
+        bbnote "Skia source prepared with all dependencies at ${SKIA_PREP_DIR}"
     fi
 }
 
