@@ -59,8 +59,8 @@ BBCLASSEXTEND = "native"
 do_configure:append() {
     SKIA_PREP_DIR="${UNPACKDIR}/skia-source"
 
-    if [ ! -f "${SKIA_PREP_DIR}/.skia-deps-synced" ]; then
-        bbnote "Preparing Skia source with dependencies..."
+    if [ ! -f "${SKIA_PREP_DIR}/.skia-prepared" ]; then
+        bbnote "Preparing Skia source..."
 
         # Extract Skia source from bitbake-downloaded tarball
         rm -rf ${SKIA_PREP_DIR}
@@ -83,16 +83,8 @@ sys.exit(0)
 FETCHGN
         chmod +x ${SKIA_PREP_DIR}/bin/fetch-gn
 
-        # Run git-sync-deps to download third-party dependencies (icu, harfbuzz, etc.)
-        # Git protocol works in Yocto sandbox (unlike HTTP/Python downloads)
-        cd ${UNPACKDIR}
-        GIT_SYNC_DEPS_PATH="${SKIA_PREP_DIR}/DEPS" \
-        GIT_SYNC_DEPS_SKIP_EMSDK=1 \
-        python3 ${SKIA_PREP_DIR}/tools/git-sync-deps
-        cd -
-
-        touch ${SKIA_PREP_DIR}/.skia-deps-synced
-        bbnote "Skia source prepared with all dependencies at ${SKIA_PREP_DIR}"
+        touch ${SKIA_PREP_DIR}/.skia-prepared
+        bbnote "Skia source prepared at ${SKIA_PREP_DIR}"
     fi
 }
 
