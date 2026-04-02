@@ -63,10 +63,10 @@ do_configure:append() {
     if [ ! -f "${SKIA_PREP_DIR}/.skia-deps-synced" ]; then
         bbnote "Preparing Skia source with dependencies..."
 
-        # Configure git with extended timeouts for large Skia dependency clones
-        git config --global http.lowSpeedLimit 0
-        git config --global http.lowSpeedTime 600
-        git config --global fetch.timeout 600
+        # Configure git with timeouts to prevent indefinite hangs on slow/stuck clones
+        git config --global http.lowSpeedLimit 1024
+        git config --global http.lowSpeedTime 60
+        git config --global fetch.timeout 120
 
         # Extract Skia source from bitbake-downloaded tarball
         rm -rf ${SKIA_PREP_DIR}
