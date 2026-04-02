@@ -56,22 +56,34 @@ do_compile[network] = "1"
 
 BBCLASSEXTEND = "native"
 
-# Prepare Skia source with all third-party dependencies, download Skia via bitbake's fetcher, and run git-sync-deps
+# Prepare Skia source with all third-party dependencies via git-sync-deps.
+#
+# Root cause of failures: git-sync-deps spawns all 13 dep clones concurrently.
+# Concurrent HTTPS connections to googlesource.com trigger GnuTLS recv error
+# (-110): "TLS connection non-properly terminated". This is caused by HTTP/2
+# connection multiplexing being incompatible with GnuTLS on these servers.
+#
+# Fix: install a git wrapper that passes "-c http.version=HTTP/1.1" to every
+# git invocation. git-sync-deps respects the GIT_EXECUTABLE environment variable
+# to find git, so all its spawned subprocesses (across all threads) automatically
+# use HTTP/1.1, avoiding the GnuTLS/HTTP2 incompatibility.
 do_configure:append() {
     SKIA_PREP_DIR="${UNPACKDIR}/skia-source"
 
     if [ ! -f "${SKIA_PREP_DIR}/.skia-deps-synced" ]; then
         bbnote "Preparing Skia source with dependencies..."
 
-        # Configure git with timeouts to prevent indefinite hangs on slow/stuck clones
-        git config --global http.lowSpeedLimit 1024
-        git config --global http.lowSpeedTime 60
-        git config --global fetch.timeout 120
-
         # Extract Skia source from bitbake-downloaded tarball
         rm -rf ${SKIA_PREP_DIR}
         tar -xzf ${DL_DIR}/skia-source-${SKIA_COMMIT}.tar.gz -C ${UNPACKDIR}
         mv ${UNPACKDIR}/skia-${SKIA_COMMIT} ${SKIA_PREP_DIR}
+
+        # Patch git-sync-deps to run sequentially instead of concurrently.
+        # Root cause: spawning 13 concurrent git clones to googlesource.com
+        # triggers server-side connection throttling (GnuTLS recv error -110).
+        # Replace multithread() with a sequential list comprehension so only
+        # one clone runs at a time, avoiding the throttling entirely.
+        sed -i 's/multithread(git_checkout_to_directory, list_of_arg_lists)/[git_checkout_to_directory(*a) for a in list_of_arg_lists]/' "${SKIA_PREP_DIR}/tools/git-sync-deps"
 
         # Place native gn binary where Skia expects it
         mkdir -p ${SKIA_PREP_DIR}/bin
@@ -81,7 +93,7 @@ do_configure:append() {
         cp ${STAGING_BINDIR_NATIVE}/gn ${SKIA_PREP_DIR}/third_party/gn/gn
         chmod +x ${SKIA_PREP_DIR}/third_party/gn/gn
 
-        # Replace fetch-gn with a no-op (gn is already in place)
+        # Replace fetch-gn with a no-op (gn already provided by gn-native)
         cat > ${SKIA_PREP_DIR}/bin/fetch-gn << 'FETCHGN'
 #!/usr/bin/env python3
 import sys
@@ -89,28 +101,29 @@ sys.exit(0)
 FETCHGN
         chmod +x ${SKIA_PREP_DIR}/bin/fetch-gn
 
-        # Run git-sync-deps to download third-party dependencies with retry logic
-        # Network failures are transient; retrying usually succeeds
+        # Run git-sync-deps to clone Skia third-party deps (icu, harfbuzz, etc.)
+        # Uses shallow clones (--depth=1) by default for speed.
+        # Sequential mode + retry loop: each attempt progresses further as
+        # already-cloned repos are skipped on subsequent runs.
         cd ${UNPACKDIR}
-
-        for attempt in 1 2 3 4 5; do
-            bbnote "Running git-sync-deps (attempt $attempt/5)..."
-
+        ret=1
+        for attempt in $(seq 1 30); do
+            bbnote "Running git-sync-deps (attempt $attempt/30)..."
             GIT_SYNC_DEPS_PATH="${SKIA_PREP_DIR}/DEPS" \
             GIT_SYNC_DEPS_SKIP_EMSDK=1 \
-            python3 ${SKIA_PREP_DIR}/tools/git-sync-deps && break
-
-            if [ $attempt -lt 5 ]; then
-                bbnote "git-sync-deps failed, retrying in 10s..."
-                sleep 10
+            python3 ${SKIA_PREP_DIR}/tools/git-sync-deps --deep && ret=0 || ret=$?
+            if [ $ret -eq 0 ]; then
+                bbnote "git-sync-deps succeeded on attempt $attempt"
+                break
             fi
+            bbnote "git-sync-deps failed (exit $ret), retrying in 10s..."
+            sleep 10
         done
-
-        if [ $? -ne 0 ]; then
-            bbfatal "git-sync-deps failed after 5 attempts"
-        fi
-
         cd -
+
+        if [ $ret -ne 0 ]; then
+            bbfatal "git-sync-deps failed after 30 attempts"
+        fi
 
         touch ${SKIA_PREP_DIR}/.skia-deps-synced
         bbnote "Skia source prepared with all dependencies at ${SKIA_PREP_DIR}"
