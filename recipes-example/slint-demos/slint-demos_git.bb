@@ -73,17 +73,63 @@ do_configure:append() {
     if [ ! -f "${SKIA_PREP_DIR}/.skia-deps-synced" ]; then
         bbnote "Preparing Skia source with dependencies..."
 
+        # Install a git wrapper forcing HTTP/1.1 for all git operations.
+        # GnuTLS (git's default HTTPS backend on Ubuntu) is incompatible with
+        # HTTP/2 on googlesource.com, causing hangs on both commit graph fetches
+        # AND blobless blob fetches. HTTP/1.1 avoids this for all git I/O.
+        # git-sync-deps checks GIT_EXECUTABLE to locate git.
+        # IMPORTANT: find the real git BEFORE creating the wrapper, and do NOT
+        # add the wrapper directory to PATH (would cause infinite recursion as
+        # oe-core/scripts/git searches PATH for 'git' and would find our wrapper).
+        mkdir -p ${UNPACKDIR}/.bin
+        REAL_GIT=$(command -v git)
+        echo '#!/bin/sh' > ${UNPACKDIR}/.bin/git
+        echo "exec $REAL_GIT -c http.version=HTTP/1.1 -c http.lowSpeedLimit=1024 -c http.lowSpeedTime=60 \"\$@\"" >> ${UNPACKDIR}/.bin/git
+        chmod +x ${UNPACKDIR}/.bin/git
+        export GIT_EXECUTABLE="${UNPACKDIR}/.bin/git"
+
         # Extract Skia source from bitbake-downloaded tarball
         rm -rf ${SKIA_PREP_DIR}
         tar -xzf ${DL_DIR}/skia-source-${SKIA_COMMIT}.tar.gz -C ${UNPACKDIR}
         mv ${UNPACKDIR}/skia-${SKIA_COMMIT} ${SKIA_PREP_DIR}
 
-        # Patch git-sync-deps to run sequentially instead of concurrently.
-        # Root cause: spawning 13 concurrent git clones to googlesource.com
-        # triggers server-side connection throttling (GnuTLS recv error -110).
-        # Replace multithread() with a sequential list comprehension so only
-        # one clone runs at a time, avoiding the throttling entirely.
+        # Patch 1: sequential execution - replace concurrent threading with a
+        # sequential list comprehension. googlesource.com throttles concurrent
+        # connections causing GnuTLS recv error (-110).
         sed -i 's/multithread(git_checkout_to_directory, list_of_arg_lists)/[git_checkout_to_directory(*a) for a in list_of_arg_lists]/' "${SKIA_PREP_DIR}/tools/git-sync-deps"
+
+        # Patch 2: use blobless clone (--filter=blob:none) instead of shallow.
+        #
+        # Problem with shallow (--depth=1):
+        #   git clone --depth=1 --no-checkout repo dir  <- fast but incomplete
+        #   git checkout SHA1                           <- FAILS (not in shallow history)
+        #   git fetch --depth=1 repo SHA1               <- HANGS (googlesource.com
+        #                                                  rejects SHA1 with depth=1)
+        #
+        # Problem with --deep (full clone):
+        #   git clone --no-checkout repo dir  <- downloads ALL history (1+ hour/repo)
+        #                                        times out on CI build servers
+        #
+        # Solution: blobless clone downloads the full commit graph (small) but
+        # defers downloading file blobs until checkout. git checkout SHA1 finds
+        # the pinned commit in the local graph and fetches only its blobs.
+        #   git clone --filter=blob:none --no-checkout repo dir  <- fast + complete graph
+        #   git checkout SHA1                                     <- WORKS, reproducible
+        #
+        python3 - "${SKIA_PREP_DIR}/tools/git-sync-deps" << 'PYEOF'
+import sys
+path = sys.argv[1]
+with open(path) as f:
+    src = f.read()
+# Replace: git clone --depth=1 --no-checkout (shallow, incomplete)
+# With:    git clone --filter=blob:none --no-checkout (blobless, full commit graph)
+src = src.replace(
+    "[git, 'clone', '--quiet', *(['--depth=1'] if shallow else []),",
+    "[git, 'clone', '--quiet', '--filter=blob:none',"
+)
+with open(path, 'w') as f:
+    f.write(src)
+PYEOF
 
         # Place native gn binary where Skia expects it
         mkdir -p ${SKIA_PREP_DIR}/bin
@@ -112,7 +158,7 @@ FETCHGN
             bbnote "Running git-sync-deps (attempt $attempt/60)..."
             GIT_SYNC_DEPS_PATH="${SKIA_PREP_DIR}/DEPS" \
             GIT_SYNC_DEPS_SKIP_EMSDK=1 \
-            python3 ${SKIA_PREP_DIR}/tools/git-sync-deps --deep && ret=0 || ret=$?
+            python3 ${SKIA_PREP_DIR}/tools/git-sync-deps && ret=0 || ret=$?
             if [ $ret -eq 0 ]; then
                 bbnote "git-sync-deps succeeded on attempt $attempt"
                 break
