@@ -102,13 +102,14 @@ FETCHGN
         chmod +x ${SKIA_PREP_DIR}/bin/fetch-gn
 
         # Run git-sync-deps to clone Skia third-party deps (icu, harfbuzz, etc.)
-        # Uses shallow clones (--depth=1) by default for speed.
-        # Sequential mode + retry loop: each attempt progresses further as
-        # already-cloned repos are skipped on subsequent runs.
+        # Uses full clones (--deep) to avoid git fetch --depth=1 <sha1> hangs on
+        # googlesource.com. Sequential mode ensures one connection at a time,
+        # preventing server-side throttling. Already-cloned repos are skipped on
+        # subsequent attempts (git-sync-deps checks commit via git checkout).
         cd ${UNPACKDIR}
         ret=1
-        for attempt in $(seq 1 30); do
-            bbnote "Running git-sync-deps (attempt $attempt/30)..."
+        for attempt in $(seq 1 60); do
+            bbnote "Running git-sync-deps (attempt $attempt/60)..."
             GIT_SYNC_DEPS_PATH="${SKIA_PREP_DIR}/DEPS" \
             GIT_SYNC_DEPS_SKIP_EMSDK=1 \
             python3 ${SKIA_PREP_DIR}/tools/git-sync-deps --deep && ret=0 || ret=$?
@@ -116,13 +117,13 @@ FETCHGN
                 bbnote "git-sync-deps succeeded on attempt $attempt"
                 break
             fi
-            bbnote "git-sync-deps failed (exit $ret), retrying in 10s..."
-            sleep 10
+            bbnote "git-sync-deps failed (exit $ret), retrying in 30s..."
+            sleep 30
         done
         cd -
 
         if [ $ret -ne 0 ]; then
-            bbfatal "git-sync-deps failed after 30 attempts"
+            bbfatal "git-sync-deps failed after 60 attempts. Check network access to googlesource.com and github.com"
         fi
 
         touch ${SKIA_PREP_DIR}/.skia-deps-synced
