@@ -29,6 +29,14 @@ RDEPENDS:${PN}:class-target += "xkeyboard-config"
 
 CARGO_DISABLE_BITBAKE_VENDORING = "1"
 CARGO_BUILD_FLAGS = "-v --target ${RUST_HOST_SYS} ${BUILD_MODE} --manifest-path=${CARGO_MANIFEST_PATH}"
+# Wire CARGO_FEATURES into the cargo invocation. OE-core's cargo.bbclass only
+# passes features via PACKAGECONFIG_CONFARGS (empty here, no PACKAGECONFIG
+# entries) and never reads CARGO_FEATURES directly. Appending --features here
+# ensures every 'cargo build' call — both the workspace build from
+# cargo_do_compile and the per-demo builds in do_compile:append — respects
+# the feature set, preventing unwanted renderer/backend crates (e.g. Skia)
+# from being compiled on machines where they are not needed.
+CARGO_BUILD_FLAGS:append = " ${@'--features ' + ','.join(d.getVar('CARGO_FEATURES').split()) if d.getVar('CARGO_FEATURES') else ''}"
 
 do_configure[network] = "1"
 do_compile[network] = "1"
