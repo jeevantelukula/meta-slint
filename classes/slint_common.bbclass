@@ -28,3 +28,18 @@ export CLANGCXX="${TARGET_PREFIX}clang++ --target=${TARGET_SYS} ${TARGET_CLANGCC
 export CLANGCPP="${TARGET_PREFIX}clang -E --target=${TARGET_SYS} ${TARGET_CLANGCC_ARCH} --sysroot=${STAGING_DIR_TARGET}  -I=/usr/include/freetype2 -ffile-prefix-map=${WORKDIR}=/usr/src/debug/${PN}/${PV}"
 export CLANG_TIDY_EXE="${TARGET_PREFIX}clang-tidy"
 export SDKTARGETSYSROOT="${PKG_CONFIG_SYSROOT_DIR}"
+
+# Forward proxy settings from the BitBake variable datastore into every task
+# shell environment for recipes that inherit this class. No URLs are hardcoded
+# here; values originate from the caller's environment (e.g. a Docker ENV
+# directive, local.conf, or shell exports captured via BB_ENV_PASSTHROUGH_ADDITIONS
+# in conf/setenv). This ensures proxy settings reach curl sub-processes spawned
+# deep inside Cargo build scripts (e.g. skia-bindings downloading Skia sources
+# or pre-built binaries) without requiring any site-specific configuration in
+# the recipe itself.
+export http_proxy
+export https_proxy
+export HTTP_PROXY
+export HTTPS_PROXY
+export no_proxy
+export NO_PROXY
