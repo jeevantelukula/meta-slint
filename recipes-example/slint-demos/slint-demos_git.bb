@@ -12,6 +12,7 @@ HOMEPAGE = "https://slint.dev/"
 LICENSE = "GPL-3.0-only | Slint-Commercial"
 
 inherit slint_common
+inherit features_check
 
 PV = "git-${SRCPV}"
 
