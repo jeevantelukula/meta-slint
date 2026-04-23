@@ -23,9 +23,9 @@ TARGET_CLANGCC_ARCH:remove = "-fcanon-prefix-map"
 
 # Add -I=/usr/include/freetype2 as skia has hardcoded it to -I/usr/include/freetype2, which
 # would locate freetype in the host system, not the sysroot target.
-export CLANGCC="${TARGET_PREFIX}clang --target=${TARGET_SYS} ${TARGET_CLANGCC_ARCH} --sysroot=${STAGING_DIR_TARGET}  -I=/usr/include/freetype2 -ffile-prefix-map=${WORKDIR}=/usr/src/debug/${PN}/${PV}"
-export CLANGCXX="${TARGET_PREFIX}clang++ --target=${TARGET_SYS} ${TARGET_CLANGCC_ARCH} --sysroot=${STAGING_DIR_TARGET}  -I=/usr/include/freetype2 -ffile-prefix-map=${WORKDIR}=/usr/src/debug/${PN}/${PV}"
-export CLANGCPP="${TARGET_PREFIX}clang -E --target=${TARGET_SYS} ${TARGET_CLANGCC_ARCH} --sysroot=${STAGING_DIR_TARGET}  -I=/usr/include/freetype2 -ffile-prefix-map=${WORKDIR}=/usr/src/debug/${PN}/${PV}"
+export CLANGCC="${TARGET_PREFIX}clang --target=${TARGET_SYS} ${TARGET_CLANGCC_ARCH} --sysroot=${STAGING_DIR_TARGET}  -I=/usr/include/freetype2"
+export CLANGCXX="${TARGET_PREFIX}clang++ --target=${TARGET_SYS} ${TARGET_CLANGCC_ARCH} --sysroot=${STAGING_DIR_TARGET}  -I=/usr/include/freetype2"
+export CLANGCPP="${TARGET_PREFIX}clang -E --target=${TARGET_SYS} ${TARGET_CLANGCC_ARCH} --sysroot=${STAGING_DIR_TARGET}  -I=/usr/include/freetype2"
 export CLANG_TIDY_EXE="${TARGET_PREFIX}clang-tidy"
 export SDKTARGETSYSROOT="${PKG_CONFIG_SYSROOT_DIR}"
 

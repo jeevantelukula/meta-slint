@@ -56,6 +56,17 @@ do_compile:prepend() {
     export CARGO_REGISTRIES_CRATES_IO_PROTOCOL=git
     export CARGO_HTTP_TIMEOUT=120
     export CARGO_NET_RETRY=5
+    # Trim build-time absolute paths from all binaries (stabilised in Rust 1.73).
+    # Demos such as gallery and printerdemo call slint::init_translations! which
+    # uses include_dir! internally. include_dir! embeds the absolute source path
+    # of the lang/ directory (derived from env!("CARGO_MANIFEST_DIR")) as a
+    # static string in .rodata. --remap-path-prefix cannot fix this because it
+    # only covers file!() macro and DWARF debug info, not env!() expansions.
+    # CARGO_PROFILE_RELEASE_TRIM_PATHS=all strips the package root prefix from
+    # every embedded path string including those from env!() macro expansions,
+    # leaving a relative path (e.g. "lang/") with no TMPDIR reference.
+    # This also improves binary reproducibility across machines.
+    export CARGO_PROFILE_RELEASE_TRIM_PATHS=all
 }
 do_compile:append() {
     # Reduce RAM requirements
