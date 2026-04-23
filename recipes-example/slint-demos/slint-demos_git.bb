@@ -32,10 +32,8 @@ CARGO_BUILD_FLAGS = "-v --target ${RUST_HOST_SYS} ${BUILD_MODE} --manifest-path=
 # Wire CARGO_FEATURES into the cargo invocation. OE-core's cargo.bbclass only
 # passes features via PACKAGECONFIG_CONFARGS (empty here, no PACKAGECONFIG
 # entries) and never reads CARGO_FEATURES directly. Appending --features here
-# ensures every 'cargo build' call — both the workspace build from
-# cargo_do_compile and the per-demo builds in do_compile:append — respects
-# the feature set, preventing unwanted renderer/backend crates (e.g. Skia)
-# from being compiled on machines where they are not needed.
+# ensures every per-demo 'cargo build -p $p' call in do_compile:append
+# respects the feature set.
 CARGO_BUILD_FLAGS:append = " ${@'--features ' + ','.join(d.getVar('CARGO_FEATURES').split()) if d.getVar('CARGO_FEATURES') else ''}"
 
 do_configure[network] = "1"
@@ -44,8 +42,26 @@ do_compile[network] = "1"
 
 BBCLASSEXTEND = "native"
 
-EXTRA_CARGO_FLAGS = "-p slint"
 CARGO_FEATURES = "slint/backend-linuxkms slint/renderer-skia"
+
+# Full list of demos to build. Downstream layers can override per machine to
+# add or remove entries based on hardware capabilities. For example, platforms
+# without a GPU should exclude the OpenGL-specific demos (opengl_texture,
+# opengl_underlay) which require hardware OpenGL at runtime even though they
+# compile with any renderer.
+SLINT_DEMOS = "slide_puzzle printerdemo gallery opengl_texture opengl_underlay energy-monitor home-automation"
+
+# Override the workspace build from cargo.bbclass. Without this, oe_cargo_build
+# runs 'cargo build' with no -p flag, which builds ALL Slint workspace
+# default-members (including internal/backends/winit and internal/backends/selector).
+# Those backend crates depend on i-slint-renderer-skia with their OWN default
+# features — pulling in skia-bindings regardless of the top-level --features flag
+# passed for the slint crate. The per-demo builds in do_compile:append already
+# build every needed binary with the correct -p and --features flags; the
+# workspace build is redundant and harmful for machines without a GPU.
+cargo_do_compile() {
+    :
+}
 
 do_compile:prepend() {
     CURL_CA_BUNDLE=${STAGING_DIR_NATIVE}/etc/ssl/certs/ca-certificates.crt
@@ -71,7 +87,7 @@ do_compile:prepend() {
 do_compile:append() {
     # Reduce RAM requirements
     export CARGO_PROFILE_RELEASE_LTO=false
-    for p in slide_puzzle printerdemo gallery opengl_texture opengl_underlay energy-monitor home-automation; do
+    for p in ${SLINT_DEMOS}; do
         cargo build ${CARGO_BUILD_FLAGS} -p $p
     done
     rm -f "${B}/target/${CARGO_TARGET_SUBDIR}"/*.so
