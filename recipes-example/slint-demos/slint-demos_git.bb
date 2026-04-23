@@ -27,6 +27,18 @@ DEPENDS:append:class-target = " \
 "
 RDEPENDS:${PN}:class-target += "xkeyboard-config"
 
+# gallery and printerdemo call slint::init_translations! which internally uses
+# the include_dir! proc macro to bundle translation files at compile time
+# (bundle-translations feature). include_dir! stores the absolute path of the
+# lang/ directory as a static &str in .rodata, derived from
+# env!("CARGO_MANIFEST_DIR"). This path contains TMPDIR and cannot be remapped
+# by --remap-path-prefix (which only covers file!() macros and DWARF debug
+# info, not env!() macro expansions), and CARGO_PROFILE_RELEASE_TRIM_PATHS is
+# not stabilised in Cargo as of 1.94.0. The embedded path is dead metadata:
+# translation file contents are fully embedded by bundle-translations and the
+# device never performs filesystem I/O to that path at runtime.
+INSANE_SKIP:${PN} += "buildpaths"
+
 CARGO_DISABLE_BITBAKE_VENDORING = "1"
 CARGO_BUILD_FLAGS = "-v --target ${RUST_HOST_SYS} ${BUILD_MODE} --manifest-path=${CARGO_MANIFEST_PATH}"
 # Wire CARGO_FEATURES into the cargo invocation. OE-core's cargo.bbclass only
@@ -72,17 +84,6 @@ do_compile:prepend() {
     export CARGO_REGISTRIES_CRATES_IO_PROTOCOL=git
     export CARGO_HTTP_TIMEOUT=120
     export CARGO_NET_RETRY=5
-    # Trim build-time absolute paths from all binaries (stabilised in Rust 1.73).
-    # Demos such as gallery and printerdemo call slint::init_translations! which
-    # uses include_dir! internally. include_dir! embeds the absolute source path
-    # of the lang/ directory (derived from env!("CARGO_MANIFEST_DIR")) as a
-    # static string in .rodata. --remap-path-prefix cannot fix this because it
-    # only covers file!() macro and DWARF debug info, not env!() expansions.
-    # CARGO_PROFILE_RELEASE_TRIM_PATHS=all strips the package root prefix from
-    # every embedded path string including those from env!() macro expansions,
-    # leaving a relative path (e.g. "lang/") with no TMPDIR reference.
-    # This also improves binary reproducibility across machines.
-    export CARGO_PROFILE_RELEASE_TRIM_PATHS=all
 }
 do_compile:append() {
     # Reduce RAM requirements
