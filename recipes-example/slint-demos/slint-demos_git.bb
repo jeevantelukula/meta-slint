@@ -63,18 +63,6 @@ CARGO_FEATURES = "slint/backend-linuxkms slint/renderer-skia"
 # compile with any renderer.
 SLINT_DEMOS = "slide_puzzle printerdemo gallery opengl_texture opengl_underlay energy-monitor home-automation"
 
-# Override the workspace build from cargo.bbclass. Without this, oe_cargo_build
-# runs 'cargo build' with no -p flag, which builds ALL Slint workspace
-# default-members (including internal/backends/winit and internal/backends/selector).
-# Those backend crates depend on i-slint-renderer-skia with their OWN default
-# features — pulling in skia-bindings regardless of the top-level --features flag
-# passed for the slint crate. The per-demo builds in do_compile:append already
-# build every needed binary with the correct -p and --features flags; the
-# workspace build is redundant and harmful for machines without a GPU.
-cargo_do_compile() {
-    :
-}
-
 do_compile:prepend() {
     CURL_CA_BUNDLE=${STAGING_DIR_NATIVE}/etc/ssl/certs/ca-certificates.crt
     export CURL_CA_BUNDLE
