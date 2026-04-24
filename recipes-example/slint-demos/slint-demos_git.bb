@@ -44,7 +44,24 @@ CARGO_FEATURES = "slint/backend-linuxkms slint/renderer-skia"
 
 SLINT_DEMOS = "slide_puzzle printerdemo gallery opengl_texture opengl_underlay energy-monitor home-automation"
 
+# Skip the workspace-wide build that cargo.bbclass would run without -p. The
+# Slint workspace default-members include internal/backends/winit and
+# internal/backends/selector which depend on slint with renderer-femtovg in
+# their default features. Cargo unifies features across all workspace members
+# in a single invocation, so every demo binary ends up with renderer-femtovg
+# compiled in regardless of CARGO_FEATURES. By making this a no-op the
+# per-demo 'cargo build -p $p' calls in do_compile:append resolve features
+# in isolation, compiling only the renderer and backend in CARGO_FEATURES.
+# RUSTFLAGS is exported here because oe_cargo_build (which normally exports
+# it) is no longer called.
+cargo_do_compile() {
+    :
+}
+
 do_compile:prepend() {
+    # RUSTFLAGS carries the target rustlib -L path set by OE-core. Normally
+    # exported by oe_cargo_build; re-export here since cargo_do_compile is a no-op.
+    export RUSTFLAGS="${RUSTFLAGS}"
     CURL_CA_BUNDLE=${STAGING_DIR_NATIVE}/etc/ssl/certs/ca-certificates.crt
     export CURL_CA_BUNDLE
     # Use the git protocol for the crates.io index instead of sparse HTTP
