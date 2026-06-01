@@ -5,7 +5,7 @@ do_compile:prepend() {
     #export RUST_TARGET_PATH="${RUST_TARGET_PATH}"
     # Make sure that Skia's invocation of clang to generate bindings.rs for the Skia headers
     # passes the right flags, in particular float abi selection
-    export BINDGEN_EXTRA_CLANG_ARGS="${HOST_CC_ARCH} ${TOOLCHAIN_OPTIONS} ${TARGET_CFLAGS}"
+    export BINDGEN_EXTRA_CLANG_ARGS="${HOST_CC_ARCH} ${TOOLCHAIN_OPTIONS} ${TARGET_CFLAGS} -std=c++17"
 }
 
 # Emulate what clang-environment.inc does.
